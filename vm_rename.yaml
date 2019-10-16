@@ -1,0 +1,71 @@
+---
+# This playbook requires few arguments, you can run it as follow:
+# ansible-playbook vm_rename.yaml -e "vcenter=1.2.3.4 username=pippo password=pluto oldname=vm-name newname=vm-newname"
+
+- name: Vmware guest inventory rename
+  hosts: localhost
+  gather_facts: no
+  vars:
+  tasks:
+
+     - name: Authenticating against the Vcenter
+       uri:
+         url: "https://{{ vcenter }}/rest/com/vmware/cis/session"
+         validate_certs: no
+         method: POST
+         user: "{{ username }}"
+         password: "{{ password }}"
+         force_basic_auth: yes
+         return_content: yes
+         status_code: 200
+       register: ses
+
+
+     - uri: 
+          url: "https://{{ vcenter }}/rest/vcenter/datacenter"
+          validate_certs: no
+          method: GET
+          return_content: yes
+          headers:
+            Cookie: "{{ses.set_cookie}}"
+       register: listadc
+
+     - set_fact:
+         vm_dc: "{{ listadc.json.value[0].name }}"
+
+     - name: Getting vm properties
+       vmware_guest_facts:
+         hostname: "{{ vcenter }}" 
+         username: "{{ username }}"
+         password: "{{ password }}"
+         validate_certs: no
+         datacenter: "{{ vm_dc }}"
+         name: "{{ oldname }}"
+       register: vmfact
+       when: listadc.json.value[0] is defined
+
+    
+     - set_fact:
+         vm_uuid: "{{ vmfact.instance.hw_product_uuid }}"
+
+     - set_fact:
+         vm_folder:  "{{ vmfact.instance.hw_folder }}"
+
+     - set_fact:
+         vm_cluster: "{{ vmfact.instance.hw_cluster }}"
+
+
+     - name: Renaming "{{ oldname }}" in "{{ newname }}"
+       vmware_guest:
+         hostname: "{{ vcenter }}"
+         username: "{{ username }}"
+         password: "{{ password }}"
+         validate_certs: no
+         datacenter: "{{ vm_dc }}"
+         cluster: "{{ vm_cluster }}"
+         folder: "{{ vm_folder }}"
+         uuid: "{{ vm_uuid }}"
+         name: "{{ newname }}"
+       when:
+         - vm_uuid is defined
+         - vm_cluster is defined
